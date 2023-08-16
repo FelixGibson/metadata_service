@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use warp::{self, Filter};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 #[derive(Deserialize)]
 struct Address {
@@ -15,16 +17,27 @@ struct Response {
     error: Option<String>,
 }
 
+fn load_map() -> HashMap<String, String> {
+    let mut data: HashMap<String, String> = HashMap::new();
+    if let Ok(file) = File::open("map.txt") {
+        let reader = BufReader::new(file);
+
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() == 2 {
+                    data.insert(parts[0].to_string(), parts[1].to_string());
+                }
+            }
+        }
+    }
+    return data;
+}
+
 #[tokio::main]
 async fn main() {
     // Populate this map with your data
-    let data_map: HashMap<String, String> = [
-        ("0xfdfadfafd".to_string(), "12323".to_string()),
-        ("0xfdfadfafe".to_string(), "1953".to_string()),
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    let data_map: HashMap<String, String> = load_map();
 
     let data_map = Arc::new(Mutex::new(data_map));
 

@@ -1,51 +1,69 @@
-use rocket::{get, routes};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use rocket::State;
+use std::sync::{Arc, Mutex};
+use warp::{self, Filter};
+use serde::{Deserialize, Serialize};
 
-struct AddressMap {
-    data: HashMap<String, String>,
+#[derive(Deserialize)]
+struct Address {
+    address: String,
 }
 
-impl AddressMap {
-    fn new() -> AddressMap {
-        AddressMap {
-            data: HashMap::new(),
+#[derive(Serialize)]
+struct Response {
+    is_success: bool,
+    data: Option<String>,
+    error: Option<String>,
+}
+
+#[tokio::main]
+async fn main() {
+    // Populate this map with your data
+    let data_map: HashMap<String, String> = [
+        ("0xfdfadfafd".to_string(), "12323".to_string()),
+        ("0xfdfadfafe".to_string(), "1953".to_string()),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    let data_map = Arc::new(Mutex::new(data_map));
+
+    let data_route = warp::path("data")
+        .and(warp::get())
+        .and(warp::query::<Address>())
+        .and(with_data_map(data_map.clone()))
+        .and_then(data_handler);
+
+    warp::serve(data_route).run(([127, 0, 0, 1], 3030)).await;
+}
+
+fn with_data_map(
+    data_map: Arc<Mutex<HashMap<String, String>>>,
+) -> impl Filter<Extract = (Arc<Mutex<HashMap<String, String>>>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || data_map.clone())
+}
+
+async fn data_handler(
+    address: Address,
+    data_map: Arc<Mutex<HashMap<String, String>>>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let data_map = data_map.lock().unwrap();
+    match data_map.get(&address.address) {
+        Some(data) => {
+            let response = Response {
+                is_success: true,
+                data: Some(data.clone()),
+                error: None,
+            };
+            Ok(warp::reply::json(&response))
+        }
+        None => {
+            let response = Response {
+                is_success: false,
+                data: None,
+                error: Some("not found".to_string()),
+            };
+            Ok(warp::reply::json(&response))
         }
     }
-
-    fn load_map(&mut self) {
-        if let Ok(file) = File::open("map.txt") {
-            let reader = BufReader::new(file);
-
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let parts: Vec<&str> = line.split(':').collect();
-                    if parts.len() == 2 {
-                        self.data.insert(parts[0].to_string(), parts[1].to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    fn get_data(&self, address: &str) -> Option<&String> {
-        self.data.get(address)
-    }
-}
-
-#[get("/data?<address>")]
-fn get_data(address: String, map: &State<AddressMap>) -> Option<String> {
-    map.get_data(&address).cloned()
-}
-
-#[rocket::launch]
-fn rocket() -> _ {
-    let mut map = AddressMap::new();
-    map.load_map();
-
-    rocket::build()
-        .manage(map)
-        .mount("/", routes![get_data])
 }

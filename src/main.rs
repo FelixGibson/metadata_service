@@ -24,9 +24,11 @@ fn load_map() -> HashMap<String, String> {
 
         for line in reader.lines() {
             if let Ok(line) = line {
-                let parts: Vec<&str> = line.split(':').collect();
-                if parts.len() == 2 {
-                    data.insert(parts[0].to_string(), parts[1].to_string());
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 2 {
+                    let key = parts[0].trim().to_string();
+                    let value = parts[1..].join(",");
+                    data.insert(key, value);
                 }
             }
         }
